@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"log"
 	"net"
-	"strconv"
-	"time"
 
 	"github.com/grandcat/zeroconf"
 )
@@ -95,7 +93,7 @@ func (n *P2PNode) acceptConnections(ctx context.Context, listener net.Listener) 
 		}
 
 		log.Printf("[P2P] New incoming connection from %s\n", conn.RemoteAddr().String())
-		// TODO: Implement reading the "Envelope" Protobuf message from 'conn' 
+		// TODO: Implement reading the "Envelope" Protobuf message from 'conn'
 		// and performing the Handshake/NoteSync process.
 		// When a new note is parsed, use Wails' runtime.EventsEmit(ctx, "onNoteReceived", note)
 		go n.handleConnection(ctx, conn)
@@ -124,7 +122,7 @@ func (n *P2PNode) discoverPeers(ctx context.Context) {
 			if entry.Instance == n.PeerID {
 				continue
 			}
-			
+
 			log.Printf("[P2P] Discovered new peer! %s at %s:%d\n", entry.Instance, entry.AddrIPv4[0], entry.Port)
 			// TODO: Here we would trigger an outbound TCP dial to this peer and send a HANDSHAKE_REQ
 			// e.g. net.Dial("tcp", entry.AddrIPv4[0].String() + ":" + strconv.Itoa(entry.Port))
