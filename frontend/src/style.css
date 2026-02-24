@@ -125,6 +125,49 @@ body {
     word-break: break-all;
 }
 
+/* Toggle advanced button */
+.toggle-advanced-btn {
+    background: transparent;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    padding: 8px 12px;
+    color: var(--text-muted);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all var(--transition);
+    text-align: left;
+    font-family: 'Inter', sans-serif;
+}
+
+.toggle-advanced-btn:hover {
+    border-color: var(--border-glow);
+    color: var(--text-secondary);
+}
+
+.toggle-advanced-btn.active {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: var(--accent-dim);
+}
+
+/* Collapsible advanced panel */
+.advanced-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    overflow: hidden;
+    max-height: 300px;
+    transition: max-height 0.3s ease, opacity 0.3s ease;
+    opacity: 1;
+}
+
+.advanced-panel.hidden {
+    max-height: 0;
+    opacity: 0;
+    pointer-events: none;
+}
+
 /* Manual connect */
 .connect-box {
     background: var(--bg-card);

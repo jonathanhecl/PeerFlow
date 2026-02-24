@@ -20,21 +20,26 @@ document.querySelector('#app').innerHTML = `
         <div class="info-card">
             <div class="label">Your Peer ID</div>
             <div class="value" id="my-peer-id">Loading...</div>
+            <div class="net-detail" id="my-address">Loading...</div>
         </div>
 
-        <div class="info-card" id="network-info-card">
-            <div class="label">Network Info</div>
-            <div class="net-detail" id="net-ips">IPs: scanning...</div>
-            <div class="net-detail" id="net-port">TCP Port: —</div>
-        </div>
+        <button class="toggle-advanced-btn" id="btn-toggle-advanced">⚙ Network Settings</button>
 
-        <div class="connect-box">
-            <div class="label">Manual Connect</div>
-            <div class="connect-row">
-                <input type="text" id="manual-ip" placeholder="192.168.1.x:port" />
-                <button id="btn-connect">→</button>
+        <div class="advanced-panel hidden" id="advanced-panel">
+            <div class="info-card">
+                <div class="label">All Local IPs</div>
+                <div class="net-detail" id="net-ips">Scanning...</div>
+                <div class="net-detail" id="net-port">TCP Port: —</div>
             </div>
-            <div class="connect-status" id="connect-status"></div>
+
+            <div class="connect-box">
+                <div class="label">Manual Connect</div>
+                <div class="connect-row">
+                    <input type="text" id="manual-ip" placeholder="192.168.1.x:port" />
+                    <button id="btn-connect">→</button>
+                </div>
+                <div class="connect-status" id="connect-status"></div>
+            </div>
         </div>
 
         <div class="peer-section">
@@ -66,6 +71,7 @@ document.querySelector('#app').innerHTML = `
 
 // DOM references
 const peerIdEl = document.getElementById('my-peer-id');
+const myAddressEl = document.getElementById('my-address');
 const peerListEl = document.getElementById('peer-list');
 const peerCountEl = document.getElementById('peer-count');
 const editor = document.getElementById('note-editor');
@@ -74,6 +80,14 @@ const netPort = document.getElementById('net-port');
 const manualIpInput = document.getElementById('manual-ip');
 const btnConnect = document.getElementById('btn-connect');
 const connectStatus = document.getElementById('connect-status');
+const btnToggleAdvanced = document.getElementById('btn-toggle-advanced');
+const advancedPanel = document.getElementById('advanced-panel');
+
+// Toggle advanced panel
+btnToggleAdvanced.addEventListener('click', () => {
+    advancedPanel.classList.toggle('hidden');
+    btnToggleAdvanced.classList.toggle('active');
+});
 
 // Initialize
 async function init() {
@@ -100,10 +114,13 @@ async function init() {
 async function refreshNetworkInfo() {
     try {
         const info = await GetNetworkInfo();
+        // Show primary IP:port next to peer ID
         if (info.localIPs && info.localIPs.length > 0) {
-            netIPs.textContent = 'IPs: ' + info.localIPs.join(', ');
+            myAddressEl.textContent = info.localIPs[0] + ':' + info.tcpPort;
+            netIPs.textContent = info.localIPs.join(', ');
         } else {
-            netIPs.textContent = 'IPs: none detected';
+            myAddressEl.textContent = 'No network detected';
+            netIPs.textContent = 'None detected';
         }
         netPort.textContent = 'TCP Port: ' + info.tcpPort;
     } catch (err) {
