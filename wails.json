@@ -7,7 +7,17 @@
   "frontend:dev:watcher": "npm run dev",
   "frontend:dev:serverUrl": "auto",
   "author": {
-    "name": "Jonathan Hecl",
-    "email": "jonathanhecl@gmail.com"
+    "name": "Jonathan Hecl"
+  },
+  "info": {
+    "productVersion": "1.0.0",
+    "productName": "PeerFlow",
+    "copyright": "Copyright 2026 Jonathan Hecl",
+    "comments": "Peer-to-Peer Text Editor"
+  },
+  "mac": {},
+  "windows": {
+    "icon": "build/windows/icon.ico",
+    "info": "build/windows/info.json"
   }
 }
