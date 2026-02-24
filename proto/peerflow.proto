@@ -1,0 +1,42 @@
+syntax = "proto3";
+
+package peerflow;
+option go_package = "peerflow/pkg/proto;pb";
+
+// Generic wrapper for all P2P messages
+message Envelope {
+  enum MessageType {
+    UNKNOWN = 0;
+    HANDSHAKE_REQ = 1; // Send inventory of notes
+    HANDSHAKE_RES = 2; // Respond with inventory and/or send note updates
+    NOTE_SYNC = 3;     // Synchronize a text delta or full note
+    FILE_TRANSFER = 4; // [Future] Transfer of binary blocks (images/files)
+  }
+  MessageType type = 1;
+
+  // Serialized bytes of the corresponding message type
+  bytes payload = 2; 
+}
+
+// Handshake: Exchange current state to determine the delta sync needed
+message Handshake {
+  string peer_id = 1;                     // Our unique Peer ID
+  map<string, int64> note_timestamps = 2; // Map of Note_ID -> Unix timestamp
+}
+
+// Note Synchronization (Last-Write-Wins strategy)
+message NoteSync {
+  string note_id = 1;
+  int64 timestamp = 2; // Timestamp of the last modification (LWW)
+  string content = 3;  // Text content of the note
+  bool is_deleted = 4; // Tombstone flag to handle deletions
+}
+
+// [Future] Payload for Clipboard Sharing or Heavy File Transfers
+message FileTransfer {
+  string file_id = 1;
+  string filename = 2;
+  int64 total_size = 3;
+  int64 chunk_offset = 4;
+  bytes chunk_data = 5;
+}

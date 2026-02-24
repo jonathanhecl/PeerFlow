@@ -1,0 +1,3 @@
+## Rules
+
+- Always use English
