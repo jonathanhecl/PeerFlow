@@ -1,7 +1,7 @@
 import './style.css';
 import './app.css';
 
-import { GetPeerID, GetPeers, GetNoteContent, UpdateNote } from '../wailsjs/go/main/App';
+import { GetPeerID, GetPeers, GetNoteContent, UpdateNote, GetNetworkInfo, ConnectToPeer } from '../wailsjs/go/main/App';
 import { EventsOn } from '../wailsjs/runtime/runtime';
 
 // State
@@ -20,6 +20,21 @@ document.querySelector('#app').innerHTML = `
         <div class="info-card">
             <div class="label">Your Peer ID</div>
             <div class="value" id="my-peer-id">Loading...</div>
+        </div>
+
+        <div class="info-card" id="network-info-card">
+            <div class="label">Network Info</div>
+            <div class="net-detail" id="net-ips">IPs: scanning...</div>
+            <div class="net-detail" id="net-port">TCP Port: —</div>
+        </div>
+
+        <div class="connect-box">
+            <div class="label">Manual Connect</div>
+            <div class="connect-row">
+                <input type="text" id="manual-ip" placeholder="192.168.1.x:port" />
+                <button id="btn-connect">→</button>
+            </div>
+            <div class="connect-status" id="connect-status"></div>
         </div>
 
         <div class="peer-section">
@@ -53,8 +68,12 @@ document.querySelector('#app').innerHTML = `
 const peerIdEl = document.getElementById('my-peer-id');
 const peerListEl = document.getElementById('peer-list');
 const peerCountEl = document.getElementById('peer-count');
-const noPeersMsg = document.getElementById('no-peers-msg');
 const editor = document.getElementById('note-editor');
+const netIPs = document.getElementById('net-ips');
+const netPort = document.getElementById('net-port');
+const manualIpInput = document.getElementById('manual-ip');
+const btnConnect = document.getElementById('btn-connect');
+const connectStatus = document.getElementById('connect-status');
 
 // Initialize
 async function init() {
@@ -69,17 +88,38 @@ async function init() {
 
         const peers = await GetPeers();
         updatePeerList(peers);
+
+        // Load network diagnostics
+        await refreshNetworkInfo();
     } catch (err) {
         console.error('Init error:', err);
     }
 }
+
+// Refresh network info
+async function refreshNetworkInfo() {
+    try {
+        const info = await GetNetworkInfo();
+        if (info.localIPs && info.localIPs.length > 0) {
+            netIPs.textContent = 'IPs: ' + info.localIPs.join(', ');
+        } else {
+            netIPs.textContent = 'IPs: none detected';
+        }
+        netPort.textContent = 'TCP Port: ' + info.tcpPort;
+    } catch (err) {
+        console.error('NetworkInfo error:', err);
+    }
+}
+
+// Refresh network info periodically
+setInterval(refreshNetworkInfo, 10000);
 
 // Update peer list UI
 function updatePeerList(peers) {
     peerCountEl.textContent = peers.length;
 
     if (peers.length === 0) {
-        peerListEl.innerHTML = '<li class="no-peers" id="no-peers-msg">No peers found yet...</li>';
+        peerListEl.innerHTML = '<li class="no-peers">No peers found yet...</li>';
         return;
     }
 
@@ -121,10 +161,41 @@ editor.addEventListener('input', () => {
     }, 300);
 });
 
+// Manual connect button
+btnConnect.addEventListener('click', async () => {
+    const address = manualIpInput.value.trim();
+    if (!address) return;
+
+    connectStatus.textContent = 'Connecting...';
+    connectStatus.className = 'connect-status connecting';
+
+    try {
+        const errMsg = await ConnectToPeer(address);
+        if (errMsg) {
+            connectStatus.textContent = '✗ ' + errMsg;
+            connectStatus.className = 'connect-status error';
+        } else {
+            connectStatus.textContent = '✓ Connected!';
+            connectStatus.className = 'connect-status success';
+            manualIpInput.value = '';
+            showToast('🔗 Connected to ' + address);
+        }
+    } catch (err) {
+        connectStatus.textContent = '✗ ' + err;
+        connectStatus.className = 'connect-status error';
+    }
+
+    setTimeout(() => { connectStatus.textContent = ''; }, 5000);
+});
+
+// Allow Enter key to connect
+manualIpInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') btnConnect.click();
+});
+
 // Listen for remote note updates
 EventsOn('onNoteReceived', (data) => {
     if (data && typeof data.content === 'string') {
-        // Preserve cursor position
         const start = editor.selectionStart;
         const end = editor.selectionEnd;
         const hadFocus = document.activeElement === editor;
@@ -133,7 +204,6 @@ EventsOn('onNoteReceived', (data) => {
         editor.value = data.content;
         isRemoteUpdate = false;
 
-        // Restore cursor if editor was focused
         if (hadFocus) {
             editor.setSelectionRange(
                 Math.min(start, data.content.length),

@@ -1,4 +1,6 @@
-*, *::before, *::after {
+*,
+*::before,
+*::after {
     box-sizing: border-box;
     margin: 0;
     padding: 0;
@@ -23,7 +25,8 @@
     --transition: 0.2s ease;
 }
 
-html, body {
+html,
+body {
     height: 100%;
     overflow: hidden;
     background: var(--bg-primary);
@@ -114,6 +117,94 @@ html, body {
     word-break: break-all;
 }
 
+.net-detail {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-top: 4px;
+    word-break: break-all;
+}
+
+/* Manual connect */
+.connect-box {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    padding: 14px;
+}
+
+.connect-box .label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+}
+
+.connect-row {
+    display: flex;
+    gap: 6px;
+}
+
+.connect-row input {
+    flex: 1;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 6px 10px;
+    color: var(--text-primary);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    outline: none;
+    transition: border-color var(--transition);
+}
+
+.connect-row input:focus {
+    border-color: var(--accent);
+}
+
+.connect-row input::placeholder {
+    color: var(--text-muted);
+    font-size: 11px;
+}
+
+.connect-row button {
+    background: var(--accent-dim);
+    border: 1px solid var(--border-glow);
+    border-radius: 6px;
+    color: var(--accent);
+    font-size: 14px;
+    font-weight: 700;
+    padding: 6px 12px;
+    cursor: pointer;
+    transition: all var(--transition);
+}
+
+.connect-row button:hover {
+    background: var(--accent);
+    color: var(--bg-primary);
+}
+
+.connect-status {
+    font-size: 11px;
+    margin-top: 6px;
+    min-height: 16px;
+    font-family: 'JetBrains Mono', monospace;
+}
+
+.connect-status.success {
+    color: var(--green);
+}
+
+.connect-status.error {
+    color: #ef4444;
+}
+
+.connect-status.connecting {
+    color: var(--accent);
+}
+
 /* Peer status */
 .peer-section {
     flex: 1;
@@ -180,8 +271,15 @@ html, body {
 }
 
 @keyframes fadeIn {
-    from { opacity: 0; transform: translateY(-4px); }
-    to { opacity: 1; transform: translateY(0); }
+    from {
+        opacity: 0;
+        transform: translateY(-4px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 .peer-dot {
@@ -195,8 +293,15 @@ html, body {
 }
 
 @keyframes pulse {
-    0%, 100% { box-shadow: 0 0 4px var(--green); }
-    50% { box-shadow: 0 0 12px var(--green); }
+
+    0%,
+    100% {
+        box-shadow: 0 0 4px var(--green);
+    }
+
+    50% {
+        box-shadow: 0 0 12px var(--green);
+    }
 }
 
 .peer-id {
@@ -324,11 +429,23 @@ html, body {
 }
 
 @keyframes toastIn {
-    from { opacity: 0; transform: translateY(10px); }
-    to { opacity: 1; transform: translateY(0); }
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 @keyframes toastOut {
-    from { opacity: 1; }
-    to { opacity: 0; }
+    from {
+        opacity: 1;
+    }
+
+    to {
+        opacity: 0;
+    }
 }

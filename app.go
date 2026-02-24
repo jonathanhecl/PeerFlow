@@ -78,3 +78,16 @@ func (a *App) UpdateNote(content string) {
 	a.node.SetNote(content, ts)
 	a.node.BroadcastNote(content, ts)
 }
+
+// GetNetworkInfo returns diagnostic info about the local network (bound to frontend)
+func (a *App) GetNetworkInfo() network.NetworkInfo {
+	return a.node.GetNetworkInfo()
+}
+
+// ConnectToPeer manually connects to a peer at the given ip:port (bound to frontend)
+func (a *App) ConnectToPeer(address string) string {
+	if err := a.node.ConnectToPeer(address); err != nil {
+		return err.Error()
+	}
+	return ""
+}

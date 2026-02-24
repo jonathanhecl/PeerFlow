@@ -24,6 +24,14 @@ type PeerInfo struct {
 	Port int
 }
 
+// NetworkInfo holds diagnostic information about the local network state
+type NetworkInfo struct {
+	PeerID   string   `json:"peerId"`
+	LocalIPs []string `json:"localIPs"`
+	TCPPort  int      `json:"tcpPort"`
+	Peers    int      `json:"peers"`
+}
+
 // P2PNode represents the local node in the P2P network
 type P2PNode struct {
 	PeerID string
@@ -140,6 +148,105 @@ func (n *P2PNode) GetPeerIDs() []string {
 	return ids
 }
 
+// GetNetworkInfo returns diagnostic info about the local network
+func (n *P2PNode) GetNetworkInfo() NetworkInfo {
+	info := NetworkInfo{
+		PeerID:  n.PeerID,
+		TCPPort: n.Port,
+	}
+
+	// Gather local IPs
+	ifaces, err := net.Interfaces()
+	if err == nil {
+		for _, iface := range ifaces {
+			if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
+				continue
+			}
+			addrs, err := iface.Addrs()
+			if err != nil {
+				continue
+			}
+			for _, addr := range addrs {
+				var ip net.IP
+				switch v := addr.(type) {
+				case *net.IPNet:
+					ip = v.IP
+				case *net.IPAddr:
+					ip = v.IP
+				}
+				if ip == nil || ip.IsLoopback() {
+					continue
+				}
+				if ip4 := ip.To4(); ip4 != nil {
+					info.LocalIPs = append(info.LocalIPs, ip4.String())
+				}
+			}
+		}
+	}
+
+	// Count peers
+	n.peers.Range(func(key, value any) bool {
+		info.Peers++
+		return true
+	})
+
+	return info
+}
+
+// ConnectToPeer manually dials a peer at the given address (ip:port)
+func (n *P2PNode) ConnectToPeer(address string) error {
+	log.Printf("[P2P] Manual connection attempt to %s\n", address)
+
+	conn, err := net.DialTimeout("tcp", address, 5*time.Second)
+	if err != nil {
+		log.Printf("[P2P] Manual dial failed: %v\n", err)
+		return fmt.Errorf("failed to connect to %s: %w", address, err)
+	}
+
+	// Generate a temporary peer ID for this manual connection
+	manualID := "manual-" + address
+
+	pc := &peerConn{
+		info: PeerInfo{ID: manualID, Addr: address},
+		conn: conn,
+	}
+
+	// Send handshake — the remote will tell us their real ID
+	n.sendHandshake(pc)
+
+	// Read the handshake response to get the real peer ID
+	env, err := readEnvelope(conn)
+	if err != nil {
+		conn.Close()
+		return fmt.Errorf("handshake failed: %w", err)
+	}
+
+	if env.Type == pb.Envelope_HANDSHAKE_RES || env.Type == pb.Envelope_HANDSHAKE_REQ {
+		hs := &pb.Handshake{}
+		if err := proto.Unmarshal(env.Payload, hs); err == nil && hs.PeerId != "" {
+			// Update with real peer ID
+			pc.info.ID = hs.PeerId
+			log.Printf("[P2P] Manual peer identified as %s\n", hs.PeerId)
+		}
+	}
+
+	// Check for duplicate
+	if _, loaded := n.peers.Load(pc.info.ID); loaded {
+		conn.Close()
+		return fmt.Errorf("already connected to %s", pc.info.ID)
+	}
+
+	n.peers.Store(pc.info.ID, pc)
+	n.emitPeerUpdate()
+
+	log.Printf("[P2P] Manual connection established with %s\n", pc.info.ID)
+
+	// Continue reading in background
+	go n.readLoop(pc)
+
+	return nil
+}
+
 // BroadcastNote sends a NoteSync message to all connected peers
 func (n *P2PNode) BroadcastNote(content string, ts int64) {
 	noteSync := &pb.NoteSync{
@@ -194,6 +301,7 @@ func (n *P2PNode) discoveryLoop() {
 }
 
 func (n *P2PNode) browsePeers() {
+	log.Println("[P2P] mDNS scan starting...")
 	resolver, err := zeroconf.NewResolver(nil)
 	if err != nil {
 		log.Printf("[P2P] Resolver error: %v\n", err)
@@ -204,13 +312,19 @@ func (n *P2PNode) browsePeers() {
 	browseCtx, browseCancel := context.WithTimeout(n.ctx, 3*time.Second)
 	defer browseCancel()
 
+	found := 0
 	go func() {
 		for entry := range entries {
+			found++
+			log.Printf("[P2P] mDNS found: %s (IPv4: %v, IPv6: %v, Port: %d)\n",
+				entry.Instance, entry.AddrIPv4, entry.AddrIPv6, entry.Port)
+
 			if entry.Instance == n.PeerID {
+				log.Printf("[P2P]   -> Skipping (self)\n")
 				continue
 			}
-			// Already connected?
 			if _, loaded := n.peers.Load(entry.Instance); loaded {
+				log.Printf("[P2P]   -> Skipping (already connected)\n")
 				continue
 			}
 
@@ -220,16 +334,21 @@ func (n *P2PNode) browsePeers() {
 			} else if len(entry.AddrIPv6) > 0 {
 				addr = entry.AddrIPv6[0].String()
 			} else {
+				log.Printf("[P2P]   -> Skipping (no valid address)\n")
 				continue
 			}
 
-			log.Printf("[P2P] Discovered peer %s at %s:%d\n", entry.Instance, addr, entry.Port)
+			log.Printf("[P2P] Dialing peer %s at %s:%d\n", entry.Instance, addr, entry.Port)
 			go n.dialPeer(entry.Instance, addr, entry.Port)
 		}
 	}()
 
-	_ = resolver.Browse(browseCtx, "_peerflow._tcp", "local.", entries)
+	err = resolver.Browse(browseCtx, "_peerflow._tcp", "local.", entries)
+	if err != nil {
+		log.Printf("[P2P] Browse error: %v\n", err)
+	}
 	<-browseCtx.Done()
+	log.Printf("[P2P] mDNS scan complete. Found %d service(s).\n", found)
 }
 
 func (n *P2PNode) dialPeer(peerID, addr string, port int) {
