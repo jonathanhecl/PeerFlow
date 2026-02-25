@@ -103,13 +103,13 @@ bash build.sh
 
 ## Roadmap
 
+- [ ] **Private Sessions** — Support for network isolation via passwords or group IDs, allowing multiple distinct PeerFlow networks to coexist on the same LAN.
+- [ ] **Clipboard Sharing** — Share text and images from the system clipboard across peers.
+- [ ] **Encryption** — TLS over the TCP connections for secure LAN communication.
+- [ ] **Peer Nicknames** — Allow peers to set a display name instead of showing raw UUIDs.
+- [ ] **File Transfer** — Send large files between peers using chunked `FileTransfer` messages (already defined in the Protobuf schema).
 - [ ] **SQLite Persistence** — Save notes locally using `modernc.org/sqlite` (pure Go, no CGO).
 - [ ] **Multiple Notes** — Support for creating, listing, and switching between notes.
-- [ ] **Clipboard Sharing** — Share text and images from the system clipboard across peers.
-- [ ] **File Transfer** — Send large files between peers using chunked `FileTransfer` messages (already defined in the Protobuf schema).
-- [ ] **Peer Nicknames** — Allow peers to set a display name instead of showing raw UUIDs.
-- [ ] **Encryption** — TLS over the TCP connections for secure LAN communication.
-- [ ] **CI/CD** — GitHub Actions workflow for automated Windows + macOS builds.
 
 ## License
 
