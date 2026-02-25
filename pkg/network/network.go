@@ -3,12 +3,14 @@ package network
 import (
 	"context"
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"net"
 	"strconv"
 	"sync"
+	"syscall"
 	"time"
 
 	pb "PeerFlow/pkg/proto"
@@ -16,6 +18,19 @@ import (
 	"github.com/grandcat/zeroconf"
 	"google.golang.org/protobuf/proto"
 )
+
+const (
+	multicastGroup = "239.255.77.77"
+	multicastPort  = 49154
+	beaconInterval = 5 * time.Second
+	beaconTTL      = 4 // Cross up to 4 router hops
+)
+
+// discoveryBeacon is the JSON payload sent via UDP multicast
+type discoveryBeacon struct {
+	PeerID  string `json:"id"`
+	TCPPort int    `json:"port"`
+}
 
 // PeerInfo holds metadata about a discovered peer
 type PeerInfo struct {
@@ -96,8 +111,12 @@ func (n *P2PNode) Start(parentCtx context.Context) error {
 	// 3. Accept incoming connections
 	go n.acceptLoop()
 
-	// 4. Discover peers periodically
+	// 4. Discover peers via mDNS (same subnet)
 	go n.discoveryLoop()
+
+	// 5. Cross-subnet discovery via UDP multicast
+	go n.multicastListenLoop()
+	go n.multicastBeaconLoop()
 
 	return nil
 }
@@ -605,6 +624,108 @@ func enableTCPKeepAlive(conn net.Conn) {
 	if tc, ok := conn.(*net.TCPConn); ok {
 		tc.SetKeepAlive(true)
 		tc.SetKeepAlivePeriod(15 * time.Second)
+	}
+}
+
+// --- Cross-subnet multicast discovery ---
+
+func (n *P2PNode) multicastBeaconLoop() {
+	dstAddr, err := net.ResolveUDPAddr("udp4", multicastGroup+":"+strconv.Itoa(multicastPort))
+	if err != nil {
+		log.Printf("[P2P] Multicast resolve error: %v\n", err)
+		return
+	}
+
+	conn, err := net.DialUDP("udp4", nil, dstAddr)
+	if err != nil {
+		log.Printf("[P2P] Multicast dial error: %v\n", err)
+		return
+	}
+	defer conn.Close()
+
+	// Set multicast TTL to cross router hops
+	if rc, scErr := conn.SyscallConn(); scErr == nil {
+		rc.Control(func(fd uintptr) {
+			// IP_MULTICAST_TTL = 10 on Windows/Linux
+			syscall.SetsockoptInt(syscall.Handle(fd), syscall.IPPROTO_IP, 10, beaconTTL)
+		})
+	}
+
+	beacon := discoveryBeacon{
+		PeerID:  n.PeerID,
+		TCPPort: n.Port,
+	}
+	data, _ := json.Marshal(beacon)
+
+	ticker := time.NewTicker(beaconInterval)
+	defer ticker.Stop()
+
+	log.Printf("[P2P] Multicast beacon started on %s:%d (TTL=%d)\n", multicastGroup, multicastPort, beaconTTL)
+
+	for {
+		select {
+		case <-n.ctx.Done():
+			return
+		case <-ticker.C:
+			if _, err := conn.Write(data); err != nil {
+				log.Printf("[P2P] Multicast send error: %v\n", err)
+			}
+		}
+	}
+}
+
+func (n *P2PNode) multicastListenLoop() {
+	groupAddr, err := net.ResolveUDPAddr("udp4", multicastGroup+":"+strconv.Itoa(multicastPort))
+	if err != nil {
+		log.Printf("[P2P] Multicast listen resolve error: %v\n", err)
+		return
+	}
+
+	// ListenMulticastUDP joins the multicast group on all interfaces when ifi is nil
+	conn, err := net.ListenMulticastUDP("udp4", nil, groupAddr)
+	if err != nil {
+		log.Printf("[P2P] Multicast listen error: %v\n", err)
+		return
+	}
+	defer conn.Close()
+
+	log.Printf("[P2P] Multicast listener ready on %s:%d\n", multicastGroup, multicastPort)
+
+	buf := make([]byte, 1024)
+	for {
+		select {
+		case <-n.ctx.Done():
+			return
+		default:
+		}
+
+		conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+		nBytes, remoteAddr, err := conn.ReadFromUDP(buf)
+		if err != nil {
+			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+				continue
+			}
+			log.Printf("[P2P] Multicast read error: %v\n", err)
+			continue
+		}
+
+		var beacon discoveryBeacon
+		if err := json.Unmarshal(buf[:nBytes], &beacon); err != nil {
+			continue
+		}
+
+		// Skip self
+		if beacon.PeerID == n.PeerID {
+			continue
+		}
+		// Skip already connected
+		if _, loaded := n.peers.Load(beacon.PeerID); loaded {
+			continue
+		}
+
+		peerIP := remoteAddr.IP.String()
+		log.Printf("[P2P] Multicast beacon from %s at %s (TCP port %d)\n", beacon.PeerID, peerIP, beacon.TCPPort)
+		go n.dialPeer(beacon.PeerID, peerIP, beacon.TCPPort)
 	}
 }
 

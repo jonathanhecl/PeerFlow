@@ -52,7 +52,7 @@ document.querySelector('#app').innerHTML = `
             </ul>
         </div>
 
-        <div class="sidebar-footer">PeerFlow v1.0.0</div>
+        <div class="sidebar-footer">PeerFlow v1.1.2</div>
     </aside>
 
     <main class="editor-area">
