@@ -1,11 +1,12 @@
 # PeerFlow
 
-A decentralized, real-time shared notepad that works entirely over your local network. No servers, no cloud, no external dependencies — pure Peer-to-Peer.
+A cross-platform, decentralized, real-time shared notepad that works entirely over your local network. No servers, no cloud, no external dependencies — pure Peer-to-Peer. Runs on **Windows**, **macOS**, and **Linux**.
 
 Every instance is both a server and a client. When you open PeerFlow on multiple machines, they automatically discover each other and sync notes in real-time over TCP using Protocol Buffers.
 
 ## Features
 
+- **Cross-Platform** — Native desktop app for Windows, macOS (ARM64/Intel), and Linux.
 - **Zero Configuration** — Launch and go. Peers are discovered automatically.
 - **Cross-Subnet Discovery** — Works across different subnets in your home network (WiFi ↔ LAN through multiple routers).
 - **Real-Time Sync** — Notes update across all connected peers with ~300ms debounce.
