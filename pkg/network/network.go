@@ -10,12 +10,12 @@ import (
 	"net"
 	"strconv"
 	"sync"
-	"syscall"
 	"time"
 
 	pb "PeerFlow/pkg/proto"
 
 	"github.com/grandcat/zeroconf"
+	"golang.org/x/net/ipv4"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -643,12 +643,10 @@ func (n *P2PNode) multicastBeaconLoop() {
 	}
 	defer conn.Close()
 
-	// Set multicast TTL to cross router hops
-	if rc, scErr := conn.SyscallConn(); scErr == nil {
-		rc.Control(func(fd uintptr) {
-			// IP_MULTICAST_TTL = 10 on Windows/Linux
-			syscall.SetsockoptInt(syscall.Handle(fd), syscall.IPPROTO_IP, 10, beaconTTL)
-		})
+	// Set multicast TTL to cross router hops (cross-platform)
+	pc := ipv4.NewPacketConn(conn)
+	if err := pc.SetMulticastTTL(beaconTTL); err != nil {
+		log.Printf("[P2P] Multicast set TTL error: %v\n", err)
 	}
 
 	beacon := discoveryBeacon{
