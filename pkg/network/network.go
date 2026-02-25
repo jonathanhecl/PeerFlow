@@ -159,7 +159,7 @@ func (n *P2PNode) GetNote() (string, int64) {
 
 // GetPeerIDs returns a snapshot of connected peer IDs
 func (n *P2PNode) GetPeerIDs() []string {
-	var ids []string
+	ids := []string{}
 	n.peers.Range(func(key, value any) bool {
 		ids = append(ids, key.(string))
 		return true

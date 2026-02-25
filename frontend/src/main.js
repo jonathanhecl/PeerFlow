@@ -234,9 +234,7 @@ EventsOn('onNoteReceived', (data) => {
 
 // Listen for peer list updates
 EventsOn('onPeerUpdate', (peers) => {
-    if (Array.isArray(peers)) {
-        updatePeerList(peers);
-    }
+    updatePeerList(Array.isArray(peers) ? peers : []);
 });
 
 // Kick it off
