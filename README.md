@@ -1,17 +1,19 @@
 # PeerFlow
 
-A decentralized, real-time shared notepad that works entirely over LAN. No servers, no cloud, no external dependencies — pure Peer-to-Peer.
+A decentralized, real-time shared notepad that works entirely over your local network. No servers, no cloud, no external dependencies — pure Peer-to-Peer.
 
-Every instance is both a server and a client. When you open PeerFlow on multiple machines in the same network, they automatically discover each other via mDNS and sync notes in real-time over TCP using Protocol Buffers.
+Every instance is both a server and a client. When you open PeerFlow on multiple machines, they automatically discover each other and sync notes in real-time over TCP using Protocol Buffers.
 
 ## Features
 
-- **Zero Configuration** — Launch and go. Peers are discovered automatically via mDNS/ZeroConf.
+- **Zero Configuration** — Launch and go. Peers are discovered automatically.
+- **Cross-Subnet Discovery** — Works across different subnets in your home network (WiFi ↔ LAN through multiple routers).
 - **Real-Time Sync** — Notes update across all connected peers with ~300ms debounce.
 - **Last-Write-Wins** — Simple conflict resolution using millisecond timestamps.
 - **Peer Visibility** — See your own UUID and all connected peers in the sidebar.
+- **Disconnect Detection** — Peers are removed from the list when they go offline (TCP keepalive + ping mechanism).
+- **Manual Connect** — Connect to peers on any reachable IP by entering their address manually.
 - **Dark UI** — Glassmorphism design with JetBrains Mono editor font.
-- **No CGO** — Pure Go SQLite (`modernc.org/sqlite`) planned for persistence, ensuring easy cross-compilation.
 
 ## Tech Stack
 
@@ -21,7 +23,8 @@ Every instance is both a server and a client. When you open PeerFlow on multiple
 | Backend | Go |
 | Frontend | Vanilla JS + Vite |
 | Serialization | [Protocol Buffers](https://protobuf.dev) |
-| Discovery | mDNS via [`grandcat/zeroconf`](https://github.com/grandcat/zeroconf) |
+| Discovery (same subnet) | mDNS via [`grandcat/zeroconf`](https://github.com/grandcat/zeroconf) |
+| Discovery (cross-subnet) | UDP Multicast (`239.255.77.77:49154`, TTL=4) |
 | Transport | TCP with 4-byte length-prefixed framing |
 
 ## Project Structure
@@ -34,7 +37,7 @@ PeerFlow/
 │       ├── main.js     # UI logic, Wails event listeners
 │       └── style.css   # Dark theme with glassmorphism
 ├── pkg/
-│   ├── network/        # P2P engine (mDNS, TCP, handshake, sync)
+│   ├── network/        # P2P engine (mDNS, multicast, TCP, handshake, sync)
 │   └── proto/          # Compiled Protobuf Go files
 ├── proto/
 │   └── peerflow.proto  # Protobuf schema (Envelope, Handshake, NoteSync)
@@ -78,19 +81,24 @@ bash build.sh
 ## Architecture
 
 ```
-┌──────────────┐         mDNS          ┌──────────────┐
-│   PeerFlow   │◄──── Discovery ──────►│   PeerFlow   │
-│   Node A     │                       │   Node B     │
-│              │◄──── TCP + Proto ────►│              │
-│  :random_port│      (Envelope)       │ :random_port │
-└──────────────┘                       └──────────────┘
+┌──────────────┐    mDNS (same subnet)    ┌──────────────┐
+│   PeerFlow   │◄────── Discovery ───────►│   PeerFlow   │
+│   Node A     │                          │   Node B     │
+│              │   UDP Multicast (cross)  │              │
+│              │◄────── Discovery ───────►│              │
+│              │                          │              │
+│              │◄───── TCP + Proto ──────►│              │
+│  :random_port│       (Envelope)         │ :random_port │
+└──────────────┘                          └──────────────┘
 ```
 
 1. Each instance binds a TCP listener on a random port.
-2. Announces itself via `_peerflow._tcp` mDNS service.
-3. Discovers peers every 5 seconds and dials new ones.
-4. Handshake exchanges note timestamps; newer content wins.
-5. Edits are broadcast as `NoteSync` messages to all connected peers.
+2. Announces itself via `_peerflow._tcp` mDNS service (same subnet).
+3. Sends UDP multicast beacons every 5s to `239.255.77.77:49154` with TTL=4 (cross-subnet).
+4. Discovers peers from both mDNS and multicast, dials new ones via TCP.
+5. Handshake exchanges note timestamps; newer content wins.
+6. Edits are broadcast as `NoteSync` messages to all connected peers.
+7. TCP keepalive (15s) and read timeouts (30s) with ping probes detect disconnected peers.
 
 ## Roadmap
 
