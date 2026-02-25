@@ -363,6 +363,7 @@ func (n *P2PNode) dialPeer(peerID, addr string, port int) {
 		log.Printf("[P2P] Failed to dial %s: %v\n", peerID, err)
 		return
 	}
+	enableTCPKeepAlive(conn)
 
 	pc := &peerConn{
 		info: PeerInfo{ID: peerID, Addr: addr, Port: port},
@@ -408,6 +409,7 @@ func (n *P2PNode) handleInbound(conn net.Conn) {
 		return
 	}
 
+	enableTCPKeepAlive(conn)
 	pc := &peerConn{
 		info: PeerInfo{ID: peerID, Addr: conn.RemoteAddr().String()},
 		conn: conn,
@@ -505,8 +507,20 @@ func (n *P2PNode) readLoop(pc *peerConn) {
 		default:
 		}
 
+		// Set a read deadline so we detect dead connections promptly
+		pc.conn.SetReadDeadline(time.Now().Add(30 * time.Second))
+
 		env, err := readEnvelope(pc.conn)
 		if err != nil {
+			// Check if it's just a timeout — peer might still be alive
+			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+				// Send a ping (handshake) to check if the peer is still alive
+				if writeErr := n.sendPing(pc); writeErr != nil {
+					log.Printf("[P2P] Peer %s unreachable (ping failed): %v\n", pc.info.ID, writeErr)
+					return
+				}
+				continue
+			}
 			return
 		}
 
@@ -519,8 +533,18 @@ func (n *P2PNode) readLoop(pc *peerConn) {
 			n.handleNoteSync(ns)
 
 		case pb.Envelope_HANDSHAKE_RES:
-			// Handshake response — just log it
+			// Handshake response (or ping response) — just log it
 			log.Printf("[P2P] Handshake response from %s\n", pc.info.ID)
+
+		case pb.Envelope_HANDSHAKE_REQ:
+			// Ping from remote peer — respond so they know we're alive
+			respHS := &pb.Handshake{PeerId: n.PeerID}
+			payload, _ := proto.Marshal(respHS)
+			respEnv := &pb.Envelope{
+				Type:    pb.Envelope_HANDSHAKE_RES,
+				Payload: payload,
+			}
+			writeEnvelope(pc, respEnv)
 		}
 	}
 }
@@ -543,20 +567,44 @@ func (n *P2PNode) handleNoteSync(ns *pb.NoteSync) {
 }
 
 func (n *P2PNode) broadcastEnvelope(env *pb.Envelope) {
+	var disconnected bool
 	n.peers.Range(func(key, value any) bool {
 		pc := value.(*peerConn)
 		if err := writeEnvelope(pc, env); err != nil {
 			log.Printf("[P2P] Write error to %s: %v\n", pc.info.ID, err)
 			pc.conn.Close()
 			n.peers.Delete(key)
+			disconnected = true
 		}
 		return true
 	})
+	if disconnected {
+		n.emitPeerUpdate()
+	}
 }
 
 func (n *P2PNode) emitPeerUpdate() {
 	if n.OnPeerUpdate != nil {
 		n.OnPeerUpdate(n.GetPeerIDs())
+	}
+}
+
+// sendPing sends a lightweight handshake to check if the peer is still alive
+func (n *P2PNode) sendPing(pc *peerConn) error {
+	hs := &pb.Handshake{PeerId: n.PeerID}
+	payload, _ := proto.Marshal(hs)
+	env := &pb.Envelope{
+		Type:    pb.Envelope_HANDSHAKE_REQ,
+		Payload: payload,
+	}
+	return writeEnvelope(pc, env)
+}
+
+// enableTCPKeepAlive enables TCP keep-alive on a connection for OS-level dead-peer detection
+func enableTCPKeepAlive(conn net.Conn) {
+	if tc, ok := conn.(*net.TCPConn); ok {
+		tc.SetKeepAlive(true)
+		tc.SetKeepAlivePeriod(15 * time.Second)
 	}
 }
 
