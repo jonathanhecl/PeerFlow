@@ -636,7 +636,7 @@ func (n *P2PNode) multicastBeaconLoop() {
 		return
 	}
 
-	conn, err := net.DialUDP("udp4", nil, dstAddr)
+	conn, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.IPv4zero, Port: 0})
 	if err != nil {
 		log.Printf("[P2P] Multicast dial error: %v\n", err)
 		return
@@ -665,8 +665,37 @@ func (n *P2PNode) multicastBeaconLoop() {
 		case <-n.ctx.Done():
 			return
 		case <-ticker.C:
-			if _, err := conn.Write(data); err != nil {
-				log.Printf("[P2P] Multicast send error: %v\n", err)
+			ifaces, err := net.Interfaces()
+			if err == nil {
+				sentAny := false
+				for _, iface := range ifaces {
+					if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagMulticast == 0 {
+						continue
+					}
+					// Must have an IPv4 address to send IPv4 multicast
+					addrs, _ := iface.Addrs()
+					hasIPv4 := false
+					for _, addr := range addrs {
+						if ipnet, ok := addr.(*net.IPNet); ok && ipnet.IP.To4() != nil {
+							hasIPv4 = true
+							break
+						}
+					}
+					if !hasIPv4 {
+						continue
+					}
+
+					if err := pc.SetMulticastInterface(&iface); err == nil {
+						if _, err := conn.WriteToUDP(data, dstAddr); err == nil {
+							sentAny = true
+						}
+					}
+				}
+				if !sentAny {
+					conn.WriteToUDP(data, dstAddr)
+				}
+			} else {
+				conn.WriteToUDP(data, dstAddr)
 			}
 		}
 	}
@@ -686,6 +715,18 @@ func (n *P2PNode) multicastListenLoop() {
 		return
 	}
 	defer conn.Close()
+
+	// Robust multi-network: explicitly join the group on ALL multicast-capable interfaces
+	pc := ipv4.NewPacketConn(conn)
+	ifaces, err := net.Interfaces()
+	if err == nil {
+		for _, iface := range ifaces {
+			if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagMulticast == 0 {
+				continue
+			}
+			pc.JoinGroup(&iface, groupAddr)
+		}
+	}
 
 	log.Printf("[P2P] Multicast listener ready on %s:%d\n", multicastGroup, multicastPort)
 
